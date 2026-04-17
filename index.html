@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Akuntansi Tambak Mandiri</title>
+    <!-- Framework & Icons -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .active-link { 
+            background-color: #1e40af !important; 
+            color: white !important; 
+        }
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.8);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            color: white;
+            z-index: 10000;
+            display: none;
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @media print {
+            .no-print { display: none; }
+            aside { display: none; }
+            main { width: 100%; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <!-- Loading Indicator -->
+    <div id="loading" class="loading-overlay">
+        <div class="flex flex-col items-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p class="mt-2 font-medium text-blue-600">Memproses data & upload file...</p>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast"></div>
+
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 bg-slate-900 text-slate-300 border-r hidden md:flex flex-col no-print">
+            <div class="p-6 border-b border-slate-800">
+                <h1 class="text-xl font-bold text-white flex items-center gap-2">
+                    <i data-lucide="anchor" class="text-blue-400"></i> Finance Pond
+                </h1>
+            </div>
+            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+                <button onclick="switchView('dashboard')" class="nav-btn w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 transition" data-view="dashboard">
+                    <i data-lucide="layout-dashboard"></i> Dashboard
+                </button>
+                <button onclick="switchView('transaksi')" class="nav-btn w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 transition" data-view="transaksi">
+                    <i data-lucide="plus-square"></i> Entri Transaksi
+                </button>
+                <button onclick="switchView('riwayat')" class="nav-btn w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 transition" data-view="riwayat">
+                    <i data-lucide="list"></i> Jurnal Umum
+                </button>
+                <button onclick="switchView('bukuBesar')" class="nav-btn w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 transition" data-view="bukuBesar">
+                    <i data-lucide="book"></i> Buku Besar
+                </button>
+                <div class="pt-4 pb-2 px-3 text-xs font-semibold text-slate-500 uppercase">Laporan Akuntansi</div>
+                <button onclick="switchView('laporan')" class="nav-btn w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 transition" data-view="laporan">
+                    <i data-lucide="file-text"></i> Laporan Keuangan
+                </button>
+            </nav>
+            <div class="p-4 border-t border-slate-800">
+                <button onclick="openConfig()" class="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 transition">
+                    <i data-lucide="settings"></i> Pengaturan
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex flex-col h-full overflow-hidden">
+            <!-- Mobile Header -->
+            <header class="md:hidden flex items-center justify-between p-4 bg-white border-b no-print">
+                <h1 class="font-bold text-blue-700 flex items-center gap-2">
+                    <i data-lucide="anchor" class="w-5 h-5"></i> Finance Pond
+                </h1>
+                <button id="mobileMenuBtn" class="p-2"><i data-lucide="menu"></i></button>
+            </header>
+
+            <div id="content-area" class="flex-1 overflow-y-auto p-4 md:p-8">
+                <!-- Content will be injected by JavaScript -->
+            </div>
+        </main>
+    </div>
+
+    <!-- API Configuration Modal -->
+    <div id="configModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[100] flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
+            <h2 class="text-xl font-bold mb-4">Konfigurasi API</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Google Apps Script Web App URL</label>
+                    <input type="text" id="apiUrl" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://script.google.com/macros/s/...">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">API Key</label>
+                    <input type="password" id="apiKey" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Masukkan API Key Anda">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button onclick="saveConfig()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700 transition">Simpan</button>
+                    <button onclick="closeConfig()" class="flex-1 bg-gray-200 py-2 rounded-lg font-bold hover:bg-gray-300 transition">Batal</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA & STATE MANAGEMENT ---
+        let currentView = 'dashboard';
+        let transactions = [];
+        let config = JSON.parse(localStorage.getItem('tambak_config')) || { url: '', key: '' };
+
+        // --- UTILITIES ---
+        const formatIDR = (num) => {
+            return new Intl.NumberFormat('id-ID', { 
+                style: 'currency', 
+                currency: 'IDR', 
+                minimumFractionDigits: 0 
+            }).format(num);
+        };
+        
+        function showToast(msg, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.style.backgroundColor = type === 'success' ? '#059669' : (type === 'error' ? '#dc2626' : '#2563eb');
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 3000);
+        }
+
+        async function apiRequest(action, payload = null, method = 'GET') {
+            if (!config.url) {
+                showToast("Harap atur URL API di pengaturan!", "error");
+                openConfig();
+                return null;
+            }
+
+            document.getElementById('loading').style.display = 'flex';
+            try {
+                let response;
+                if (method === 'GET') {
+                    const url = `${config.url}?action=${action}&apiKey=${config.key}`;
+                    response = await fetch(url);
+                } else {
+                    response = await fetch(config.url, {
+                        method: 'POST',
+                        body: JSON.stringify({ action, apiKey: config.key, payload })
+                    });
+                }
+                const result = await response.json();
+                if (result.status === 'success') return result;
+                else throw new Error(result.message);
+            } catch (err) {
+                console.error(err);
+                showToast("Gagal terhubung ke API: " + err.message, "error");
+                return null;
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // --- DASHBOARD CHARTS ---
+        let mainChart = null;
+        function initDashboardChart() {
+            const canvas = document.getElementById('mainChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+
+            const labels = [];
+            const dataInc = [];
+            const dataExp = [];
+            
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                const dStr = date.toISOString().split('T')[0];
+                labels.push(new Date(dStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }));
+                
+                const dayTrx = transactions.filter(t => t.Tanggal.toString().includes(dStr));
+                dataInc.push(dayTrx.filter(t => t.Jenis === 'Pemasukan').reduce((a,b) => a + Number(b.Total), 0));
+                dataExp.push(dayTrx.filter(t => t.Jenis === 'Pengeluaran').reduce((a,b) => a + Number(b.Total), 0));
+            }
+
+            if (mainChart) mainChart.destroy();
+            mainChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Pemasukan', data: dataInc, backgroundColor: '#10b981', borderRadius: 4 },
+                        { label: 'Pengeluaran', data: dataExp, backgroundColor: '#ef4444', borderRadius: 4 }
+                    ]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // --- TEMPLATES ---
+        const views = {
+            dashboard: () => `
+                <div class="space-y-6 animate-fade-in">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-2xl font-bold">Dashboard Keuangan</h2>
+                        <button onclick="refreshData()" class="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition flex items-center gap-2">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Segarkan Data
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-white p-6 rounded-xl border shadow-sm">
+                            <p class="text-sm text-gray-500 font-medium">Laba (Rugi) Berjalan</p>
+                            <h3 class="text-2xl font-bold ${getProfit() >= 0 ? 'text-green-600' : 'text-red-600'} mt-1">${formatIDR(getProfit())}</h3>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl border shadow-sm">
+                            <p class="text-sm text-gray-500 font-medium">Saldo Kas & Bank</p>
+                            <h3 class="text-2xl font-bold text-blue-600 mt-1">${formatIDR(getSaldo())}</h3>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl border border-orange-100 shadow-sm">
+                            <p class="text-sm text-gray-500 font-medium">Total Hutang Aktif</p>
+                            <h3 class="text-2xl font-bold text-orange-600 mt-1">${formatIDR(getTotalHutang())}</h3>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl border shadow-sm h-[350px]">
+                        <h4 class="font-bold mb-4 text-gray-700 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4"></i> Arus Kas 7 Hari Terakhir</h4>
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                </div>
+            `,
+            transaksi: () => `
+                <div class="max-w-2xl mx-auto bg-white rounded-xl border p-6 shadow-md animate-fade-in">
+                    <h2 class="text-2xl font-bold mb-6 flex items-center gap-2"><i data-lucide="file-plus" class="text-blue-600"></i> Entri Transaksi Keuangan</h2>
+                    <form id="trxForm" onsubmit="handleTrxSubmit(event)" class="space-y-5">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-1">Tanggal</label>
+                                <input type="date" name="tanggal" required class="w-full border rounded-lg p-2" value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-1">Jenis Arus</label>
+                                <select name="jenis" onchange="toggleFields(this.value)" required class="w-full border rounded-lg p-2">
+                                    <option value="Pengeluaran">Pengeluaran (Beban)</option>
+                                    <option value="Pemasukan">Pemasukan (Pendapatan)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="field-pemasukan" class="hidden space-y-4 bg-green-50 p-4 rounded-lg border border-green-200">
+                            <div>
+                                <label class="block text-sm font-semibold mb-1 text-green-800">Akun Pendapatan</label>
+                                <select name="sumber" class="w-full border rounded-lg p-2">
+                                    <option value="Penjualan Udang">Penjualan Udang</option>
+                                    <option value="Penjualan Ikan">Penjualan Ikan</option>
+                                    <option value="Pendapatan Lainnya">Pendapatan Lainnya</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="field-pengeluaran" class="space-y-4 bg-red-50 p-4 rounded-lg border border-red-200">
+                            <div>
+                                <label class="block text-sm font-semibold mb-1 text-red-800">Akun Beban</label>
+                                <select name="kategori" class="w-full border rounded-lg p-2">
+                                    <option value="Beban Pakan">Beban Pakan</option>
+                                    <option value="Beban Benur/Bibit">Beban Benur/Bibit</option>
+                                    <option value="Beban Obat & Vitamin">Beban Obat & Vitamin</option>
+                                    <option value="Gaji Tenaga Kerja">Gaji Tenaga Kerja</option>
+                                    <option value="Beban Peralatan">Beban Peralatan</option>
+                                    <option value="Beban Listrik & Air">Beban Listrik & Air</option>
+                                    <option value="Beban Lainnya">Beban Lainnya</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-1">Nominal (Rp)</label>
+                                <input type="number" name="total" id="inputTotal" required class="w-full border rounded-lg p-2 font-bold text-blue-800" placeholder="0">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-1">Metode</label>
+                                <select name="metode" onchange="toggleHutang(this.value)" class="w-full border rounded-lg p-2">
+                                    <option value="Tunai">Tunai / Kas</option>
+                                    <option value="Transfer">Transfer Bank</option>
+                                    <option value="Hutang">Hutang / Belum Bayar</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="field-hutang" class="hidden bg-orange-50 p-4 rounded-lg border border-orange-200">
+                            <label class="block text-sm font-semibold mb-1 text-orange-800">Pihak Kreditur / Supplier</label>
+                            <input type="text" name="hutangKe" class="w-full border rounded-lg p-2" placeholder="Nama Supplier">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold mb-1">Keterangan / Memo</label>
+                            <input type="text" name="nama" class="w-full border rounded-lg p-2" placeholder="Catatan tambahan...">
+                        </div>
+
+                        <!-- Update: Multiple File Upload Support -->
+                        <div class="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                            <label class="block text-sm font-semibold mb-2 flex items-center gap-2 text-slate-700">
+                                <i data-lucide="paperclip" class="w-4 h-4"></i> Lampiran Bukti Transaksi (Bisa banyak file)
+                            </label>
+                            <input type="file" id="fileInput" multiple class="w-full text-sm text-slate-500
+                                file:mr-4 file:py-2 file:px-4
+                                file:rounded-full file:border-0
+                                file:text-sm file:font-semibold
+                                file:bg-blue-50 file:text-blue-700
+                                hover:file:bg-blue-100 transition">
+                            <p class="text-[10px] text-slate-400 mt-2">* Tahan tombol Ctrl/Command untuk memilih lebih dari satu file.</p>
+                        </div>
+
+                        <button type="submit" class="w-full bg-blue-700 text-white py-3 rounded-lg font-bold hover:bg-blue-800 transition">Posting Transaksi</button>
+                    </form>
+                </div>
+            `,
+            riwayat: () => `
+                <div class="space-y-4 animate-fade-in">
+                    <h2 class="text-2xl font-bold">Jurnal Umum</h2>
+                    <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 border-b">
+                                <tr>
+                                    <th class="p-4 font-bold">Tanggal</th>
+                                    <th class="p-4 font-bold">Akun</th>
+                                    <th class="p-4 font-bold text-right">Debit (Masuk)</th>
+                                    <th class="p-4 font-bold text-right">Kredit (Keluar)</th>
+                                    <th class="p-4 text-center">Bukti</th>
+                                    <th class="p-4 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${transactions.slice().reverse().map(t => `
+                                    <tr class="border-b hover:bg-slate-50 transition">
+                                        <td class="p-4">${t.Tanggal.toString().split('T')[0]}</td>
+                                        <td class="p-4">
+                                            <span class="font-medium text-slate-700">${t['Kategori/Sumber']}</span><br>
+                                            <span class="text-[10px] text-slate-400">${t.Nama || t.Metode}</span>
+                                        </td>
+                                        <td class="p-4 text-right font-bold text-green-600">${t.Jenis === 'Pemasukan' ? formatIDR(t.Total) : '-'}</td>
+                                        <td class="p-4 text-right font-bold text-red-600">${t.Jenis === 'Pengeluaran' ? formatIDR(t.Total) : '-'}</td>
+                                        <td class="p-4 text-center">
+                                            ${renderEvidenceIcons(t['Bukti URL'])}
+                                        </td>
+                                        <td class="p-4 text-center">
+                                            <button onclick="deleteTrx('${t.ID}')" class="text-red-400 hover:text-red-600"><i data-lucide="trash-2" class="w-4 h-4 inline"></i></button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `,
+            bukuBesar: () => {
+                const categories = [...new Set(transactions.map(t => t['Kategori/Sumber']))];
+                return `
+                <div class="space-y-6 animate-fade-in">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-2xl font-bold">Buku Besar</h2>
+                        <select onchange="renderBukuBesarDetail(this.value)" class="border rounded-lg p-2 text-sm bg-white">
+                            <option value="">-- Pilih Akun --</option>
+                            ${categories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="bukuBesarContent" class="bg-white rounded-xl border shadow-sm p-6 text-center text-gray-400">
+                        Silakan pilih akun untuk melihat buku besar detail.
+                    </div>
+                </div>
+                `;
+            },
+            laporan: () => `
+                <div class="space-y-8 animate-fade-in">
+                    <div class="flex justify-between items-center no-print">
+                        <h2 class="text-2xl font-bold">Laporan Keuangan</h2>
+                        <button onclick="window.print()" class="px-4 py-2 bg-slate-800 text-white rounded-lg flex items-center gap-2">
+                            <i data-lucide="printer"></i> Cetak Laporan
+                        </button>
+                    </div>
+
+                    <!-- Laba Rugi -->
+                    <div class="bg-white p-8 rounded-xl border shadow-sm">
+                        <h3 class="text-center text-xl font-bold mb-6 border-b pb-4 uppercase tracking-widest">Laporan Laba Rugi</h3>
+                        <div class="max-w-xl mx-auto space-y-4">
+                            <div class="font-bold border-b pb-1 text-blue-800">PENDAPATAN</div>
+                            ${renderReportSection('Pemasukan')}
+                            <div class="flex justify-between font-bold text-green-700 bg-green-50 p-2 rounded">
+                                <span>Total Pendapatan</span>
+                                <span>${formatIDR(getTotalByType('Pemasukan'))}</span>
+                            </div>
+
+                            <div class="font-bold border-b pb-1 mt-6 text-red-800">BEBAN / PENGELUARAN</div>
+                            ${renderReportSection('Pengeluaran')}
+                            <div class="flex justify-between font-bold text-red-700 bg-red-50 p-2 rounded">
+                                <span>Total Beban</span>
+                                <span>${formatIDR(getTotalByType('Pengeluaran'))}</span>
+                            </div>
+
+                            <div class="flex justify-between items-center mt-8 p-4 bg-slate-900 text-white rounded-xl">
+                                <span class="text-lg font-bold">LABA (RUGI) BERSIH</span>
+                                <span class="text-2xl font-black">${formatIDR(getProfit())}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Neraca Sederhana -->
+                    <div class="bg-white p-8 rounded-xl border shadow-sm">
+                        <h3 class="text-center text-xl font-bold mb-6 border-b pb-4 uppercase tracking-widest">Neraca</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                            <!-- Aset -->
+                            <div class="space-y-4">
+                                <div class="font-bold border-b pb-1 text-blue-800 uppercase tracking-wider text-xs">ASET (HARTA)</div>
+                                <div class="flex justify-between">
+                                    <span>Kas & Setara Kas</span>
+                                    <span>${formatIDR(getSaldo())}</span>
+                                </div>
+                                <div class="flex justify-between font-bold border-t pt-2">
+                                    <span>TOTAL ASET</span>
+                                    <span>${formatIDR(getSaldo())}</span>
+                                </div>
+                            </div>
+                            <!-- Kewajiban & Ekuitas -->
+                            <div class="space-y-4">
+                                <div class="font-bold border-b pb-1 text-red-800 uppercase tracking-wider text-xs">KEWAJIBAN & EKUITAS</div>
+                                <div class="flex justify-between">
+                                    <span>Hutang Dagang</span>
+                                    <span class="text-red-600">${formatIDR(getTotalHutang())}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Ekuitas (Laba Berjalan)</span>
+                                    <span>${formatIDR(getProfit())}</span>
+                                </div>
+                                <div class="flex justify-between font-bold border-t pt-2">
+                                    <span>TOTAL KEWAJIBAN & EKUITAS</span>
+                                    <span>${formatIDR(getTotalHutang() + getProfit())}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        // --- CORE FUNCTIONS ---
+        function switchView(view) {
+            currentView = view;
+            const container = document.getElementById('content-area');
+            container.innerHTML = views[view]();
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if(btn.dataset.view === view) btn.classList.add('active-link');
+                else btn.classList.remove('active-link');
+            });
+
+            if (view === 'dashboard') setTimeout(initDashboardChart, 100);
+            lucide.createIcons();
+        }
+
+        async function refreshData() {
+            const res = await apiRequest('getData');
+            if (res) {
+                transactions = res.data;
+                switchView(currentView);
+            }
+        }
+
+        function toggleFields(val) {
+            document.getElementById('field-pemasukan').classList.toggle('hidden', val !== 'Pemasukan');
+            document.getElementById('field-pengeluaran').classList.toggle('hidden', val !== 'Pengeluaran');
+        }
+
+        function toggleHutang(val) {
+            document.getElementById('field-hutang').classList.toggle('hidden', val !== 'Hutang');
+        }
+
+        // Updated for multiple files using Promise.all
+        async function handleTrxSubmit(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const payload = Object.fromEntries(formData.entries());
+            payload.kategori = payload.jenis === 'Pemasukan' ? payload.sumber : payload.kategori;
+
+            const fileInput = document.getElementById('fileInput');
+            const files = fileInput.files;
+            
+            if (files.length > 0) {
+                const filePromises = Array.from(files).map(file => {
+                    return new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.readAsDataURL(file);
+                        reader.onload = () => resolve({
+                            data: reader.result,
+                            name: file.name,
+                            type: file.type
+                        });
+                    });
+                });
+                
+                payload.files = await Promise.all(filePromises);
+            } else {
+                payload.files = [];
+            }
+
+            await executeTrx(payload);
+        }
+
+        async function executeTrx(payload) {
+            const res = await apiRequest('addTransaksi', payload, 'POST');
+            if (res) {
+                showToast(`Berhasil memposting transaksi dengan ${payload.files.length} lampiran!`, "success");
+                refreshData();
+            }
+        }
+
+        function renderEvidenceIcons(urlStr) {
+            if (!urlStr) return '-';
+            const urls = urlStr.split(',');
+            return `
+                <div class="flex flex-wrap justify-center gap-1">
+                    ${urls.map((url, i) => `
+                        <a href="${url.trim()}" target="_blank" class="text-blue-600 hover:text-blue-800 bg-blue-50 p-1 rounded" title="Lampiran ${i+1}">
+                            <i data-lucide="file-text" class="w-4 h-4"></i>
+                        </a>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        async function deleteTrx(id) {
+            if (!confirm("Hapus postingan jurnal ini?")) return;
+            const res = await apiRequest('deleteTransaksi', { id }, 'POST');
+            if (res) {
+                showToast("Data dihapus", "success");
+                refreshData();
+            }
+        }
+
+        // --- ACCOUNTING LOGIC ---
+        function getTotalByType(type) {
+            return transactions.filter(t => t.Jenis === type).reduce((a, b) => a + Number(b.Total), 0);
+        }
+
+        function getProfit() {
+            return getTotalByType('Pemasukan') - getTotalByType('Pengeluaran');
+        }
+
+        function getSaldo() {
+            const cashIn = transactions.filter(t => t.Jenis === 'Pemasukan' && t.Metode !== 'Hutang').reduce((a,b) => a + Number(b.Total), 0);
+            const cashOut = transactions.filter(t => t.Jenis === 'Pengeluaran' && t.Metode !== 'Hutang').reduce((a,b) => a + Number(b.Total), 0);
+            return cashIn - cashOut;
+        }
+
+        function getTotalHutang() {
+            return transactions.filter(t => t.Metode === 'Hutang' && t['Status Hutang'] !== 'Lunas').reduce((a,b) => a + Number(b.Total), 0);
+        }
+
+        function renderReportSection(type) {
+            const totals = {};
+            transactions.filter(t => t.Jenis === type).forEach(t => {
+                const cat = t['Kategori/Sumber'];
+                totals[cat] = (totals[cat] || 0) + Number(t.Total);
+            });
+            return Object.entries(totals).map(([cat, val]) => `
+                <div class="flex justify-between text-sm py-1 border-b border-dashed">
+                    <span>${cat}</span>
+                    <span class="font-medium">${formatIDR(val)}</span>
+                </div>
+            `).join('') || '<p class="text-xs text-gray-400 italic">Tidak ada catatan</p>';
+        }
+
+        function renderBukuBesarDetail(category) {
+            const container = document.getElementById('bukuBesarContent');
+            if (!category) {
+                container.innerHTML = "Pilih akun terlebih dahulu.";
+                return;
+            }
+
+            const data = transactions.filter(t => t['Kategori/Sumber'] === category);
+            let runningBalance = 0;
+
+            const rows = data.map(t => {
+                const amt = Number(t.Total);
+                if (t.Jenis === 'Pemasukan') runningBalance += amt;
+                else runningBalance -= amt;
+
+                return `
+                <tr class="border-b text-xs">
+                    <td class="p-2">${t.Tanggal.toString().split('T')[0]}</td>
+                    <td class="p-2">${t.Nama || t.Metode}</td>
+                    <td class="p-2 text-right">${t.Jenis === 'Pemasukan' ? formatIDR(amt) : '-'}</td>
+                    <td class="p-2 text-right">${t.Jenis === 'Pengeluaran' ? formatIDR(amt) : '-'}</td>
+                    <td class="p-2 text-right font-bold">${formatIDR(runningBalance)}</td>
+                    <td class="p-2 text-center">
+                        ${renderEvidenceIcons(t['Bukti URL'])}
+                    </td>
+                </tr>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="overflow-x-auto animate-fade-in">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="font-bold text-blue-800">Detail Akun: ${category}</h4>
+                    </div>
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-50 border-b">
+                            <tr class="text-[10px] uppercase text-slate-500 tracking-wider">
+                                <th class="p-2">Tanggal</th>
+                                <th class="p-2">Keterangan</th>
+                                <th class="p-2 text-right">Debit</th>
+                                <th class="p-2 text-right">Kredit</th>
+                                <th class="p-2 text-right">Saldo</th>
+                                <th class="p-2 text-center">Bukti</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // --- INITIALIZATION ---
+        function openConfig() {
+            document.getElementById('apiUrl').value = config.url;
+            document.getElementById('apiKey').value = config.key;
+            document.getElementById('configModal').classList.remove('hidden');
+        }
+        function closeConfig() { document.getElementById('configModal').classList.add('hidden'); }
+        function saveConfig() {
+            config = {
+                url: document.getElementById('apiUrl').value.trim(),
+                key: document.getElementById('apiKey').value.trim()
+            };
+            localStorage.setItem('tambak_config', JSON.stringify(config));
+            closeConfig();
+            refreshData();
+        }
+
+        window.onload = () => {
+            if (config.url) refreshData();
+            else switchView('dashboard');
+        };
+
+        // Mobile Menu
+        document.getElementById('mobileMenuBtn')?.addEventListener('click', () => {
+            const sidebar = document.querySelector('aside');
+            sidebar.classList.toggle('hidden');
+            sidebar.classList.toggle('fixed');
+            sidebar.classList.toggle('z-50');
+            sidebar.classList.toggle('inset-0');
+        });
+    </script>
+</body>
+</html>
